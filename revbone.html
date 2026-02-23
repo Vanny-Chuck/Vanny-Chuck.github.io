@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>RevBone — Break Even Calculator</title>
+    <style>
+      body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,'Helvetica Neue',Arial;margin:24px}
+      label{display:block;margin-top:12px}
+      input[type="text"], input[type="number"]{width:320px;padding:8px;margin-top:6px}
+      button{margin-top:12px;padding:8px 12px}
+      .error{color:#a00;margin-top:6px}
+      .result{margin-top:18px;padding:12px;background:#f7f7f7;border-radius:6px}
+      .muted{color:#666;font-size:0.9rem}
+    </style>
+  </head>
+  <body>
+    <h1>RevBone — Break Even Calculator</h1>
+
+    <form id="calcForm" onsubmit="return false;">
+      <label>What are you buying:
+        <input id="product" type="text" placeholder="e.g. D1111111" required />
+      </label>
+
+      <label>How much do you buy the materials for:
+        <div style="display:flex;gap:8px;align-items:center;margin-top:6px">
+          <input id="expenses" type="number" step="0.01" placeholder="e.g. 99.99" required />
+          <select id="expensesUnit" title="Multiply by" style="padding:6px">
+            <option value="">—</option>
+            <option value="K">K (thousand)</option>
+            <option value="M">M (million)</option>
+          </select>
+        </div>
+      </label>
+
+      <label id="productionLabel">How many products can you make with one <span id="productName">item</span>:
+        <input id="production" type="number" step="1" placeholder="e.g. 10" required />
+      </label>
+
+      <label>How much profit would you like as a percentage? (0 is break even - 100 is double your investment):
+        <input id="profit" type="number" step="0.1" placeholder="e.g. 20" required />
+      </label>
+
+      <div class="error" id="error" aria-live="polite"></div>
+
+      <button id="compute">Compute</button>
+      <div style="margin-top:12px">
+        <label style="display:inline-flex;align-items:center">
+          <input id="workOut" type="checkbox" style="margin-right:8px"> Work out the numbers for how much to buy?
+        </label>
+      </div>
+
+      <div id="workOutInputs" style="display:none;margin-top:8px">
+        <label>How much profit would you like as a dollar amount:
+          <div style="display:flex;gap:8px;align-items:center;margin-top:6px">
+            <input id="profitRequested" type="number" step="0.01" placeholder="e.g. 50" />
+            <select id="profitRequestedUnit" title="Multiply by" style="padding:6px">
+              <option value="">—</option>
+              <option value="K">K (thousand)</option>
+              <option value="M">M (million)</option>
+            </select>
+          </div>
+        </label>
+        <label>How much are you selling your products for:
+          <div style="display:flex;gap:8px;align-items:center;margin-top:6px">
+            <input id="sellPoint" type="number" step="0.01" placeholder="e.g. 10" />
+            <select id="sellPointUnit" title="Multiply by" style="padding:6px">
+              <option value="">—</option>
+              <option value="K">K (thousand)</option>
+              <option value="M">M (million)</option>
+            </select>
+          </div>
+        </label>
+      </div>
+    </form>
+
+    <div class="result" id="output" style="display:none" aria-live="polite"></div>
+
+    <script>
+      const product = document.getElementById('product');
+      const expenses = document.getElementById('expenses');
+      const production = document.getElementById('production');
+      const profit = document.getElementById('profit');
+      const compute = document.getElementById('compute');
+      const error = document.getElementById('error');
+      const output = document.getElementById('output');
+      const productName = document.getElementById('productName');
+      const workOut = document.getElementById('workOut');
+      const workOutInputs = document.getElementById('workOutInputs');
+      const profitRequestedInput = document.getElementById('profitRequested');
+      const sellPointInput = document.getElementById('sellPoint');
+      const expensesUnit = document.getElementById('expensesUnit');
+      const profitRequestedUnit = document.getElementById('profitRequestedUnit');
+      const sellPointUnit = document.getElementById('sellPointUnit');
+
+      product.addEventListener('input', () => productName.textContent = product.value || 'item');
+      if (workOut) {
+        workOut.addEventListener('change', () => {
+          workOutInputs.style.display = workOut.checked ? 'block' : 'none';
+        });
+      }
+
+      function showError(msg){ error.textContent = msg; output.style.display = 'none'; }
+      function clearError(){ error.textContent = ''; }
+
+      compute.addEventListener('click', () => {
+        clearError();
+        output.style.display = 'none';
+
+        const pName = product.value.trim();
+        const expRaw = parseFloat(expenses.value);
+        const expUnit = expensesUnit ? expensesUnit.value : '';
+        const exp = scaleByUnit(expRaw, expUnit);
+        const prod = parseFloat(production.value);
+        const profPct = parseFloat(profit.value);
+
+        if(!pName){ showError('Please enter what you are buying.'); return; }
+        if(Number.isNaN(exp) || exp <= 0){ showError('Enter a valid positive number for materials cost.'); return; }
+        if(Number.isNaN(prod) || prod <= 0){ showError('Enter a valid positive number for production quantity.'); return; }
+        if(Number.isNaN(profPct) || profPct < 0){ showError('Enter a valid non-negative profit percentage.'); return; }
+
+        const breakEven = (exp / prod) + 0.01;
+        const profitFraction = profPct / 100;
+        const suggested = breakEven + breakEven * profitFraction;
+
+        let html = '';
+        html += `<strong>You will break even if you sell your product for:</strong> $${breakEven.toFixed(2)}<br><br>`;
+        html += `<strong>Suggested sell price for <em>${Math.round(profitFraction*100)}%</em> profit:</strong> $${suggested.toFixed(2)}<br>`;
+
+        // If user wants the "work out" flow, compute how much to buy
+        if (workOut && workOut.checked) {
+          const profitRaw = parseFloat(profitRequestedInput.value);
+          const profitUnit = profitRequestedUnit ? profitRequestedUnit.value : '';
+          const profitRequested = scaleByUnit(profitRaw, profitUnit);
+
+          const sellRaw = parseFloat(sellPointInput.value);
+          const sellUnit = sellPointUnit ? sellPointUnit.value : '';
+          const sellPoint = scaleByUnit(sellRaw, sellUnit);
+
+          if (Number.isNaN(profitRequested) || profitRequested <= 0) {
+            showError('Enter a valid positive dollar amount for desired profit.');
+            return;
+          }
+          if (Number.isNaN(sellPoint) || sellPoint <= breakEven) {
+            showError('Enter a selling price greater than the break-even price.');
+            return;
+          }
+
+          const needed = Math.round(profitRequested / (sellPoint - breakEven));
+          html += `<br><strong>You will need to buy:</strong> ${needed}`;
+        }
+
+        output.innerHTML = html;
+        output.style.display = 'block';
+      });
+
+      function escapeHtml(s){
+        return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+      }
+
+      function scaleByUnit(value, unit){
+        if (Number.isNaN(value)) return NaN;
+        if (!unit) return value;
+        if (unit === 'K') return value * 1e3;
+        if (unit === 'M') return value * 1e6;
+        return value;
+      }
+    </script>
+  </body>
+</html>
